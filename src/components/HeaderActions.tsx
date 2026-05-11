@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus, LogOut, FolderOpen, ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, LogOut, FolderOpen, ChevronDown, Pencil, Trash2, Check, X } from "lucide-react";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import { signOut } from "@/actions";
 import { getProjects } from "@/actions/get-projects";
 import { createProject } from "@/actions/create-project";
+import { updateProject } from "@/actions/update-project";
+import { deleteProject } from "@/actions/delete-project";
 import {
   Popover,
   PopoverContent,
@@ -45,6 +48,9 @@ export function HeaderActions({ user, projectId }: HeaderActionsProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Load projects initially
   useEffect(() => {
@@ -81,6 +87,39 @@ export function HeaderActions({ user, projectId }: HeaderActionsProps) {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const startRename = (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(project.id);
+    setRenameValue(project.name);
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  };
+
+  const commitRename = async () => {
+    if (!renamingId || !renameValue.trim()) {
+      setRenamingId(null);
+      return;
+    }
+    await updateProject(renamingId, renameValue.trim());
+    setProjects((prev) =>
+      prev.map((p) => (p.id === renamingId ? { ...p, name: renameValue.trim() } : p))
+    );
+    setRenamingId(null);
+  };
+
+  const cancelRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(null);
+  };
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await deleteProject(id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (id === projectId) {
+      router.push("/");
+    }
   };
 
   const handleNewDesign = async () => {
@@ -138,14 +177,51 @@ export function HeaderActions({ user, projectId }: HeaderActionsProps) {
                       key={project.id}
                       value={project.name}
                       onSelect={() => {
+                        if (renamingId === project.id) return;
                         router.push(`/${project.id}`);
                         setProjectsOpen(false);
                         setSearchQuery("");
                       }}
+                      className="group flex items-center justify-between gap-2"
                     >
-                      <div className="flex flex-col">
-                        <span className="font-medium">{project.name}</span>
-                      </div>
+                      {renamingId === project.id ? (
+                        <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            ref={renameInputRef}
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitRename();
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            className="h-6 text-sm px-1 py-0"
+                          />
+                          <button onClick={commitRename} className="text-green-600 hover:text-green-700">
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={cancelRename} className="text-neutral-400 hover:text-neutral-600">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="font-medium truncate">{project.name}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => startRename(project, e)}
+                              className="p-0.5 rounded hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDelete(project.id, e)}
+                              className="p-0.5 rounded hover:bg-red-50 text-neutral-400 hover:text-red-600"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </CommandItem>
                   ))}
                 </CommandGroup>
